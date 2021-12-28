@@ -1,0 +1,241 @@
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:pull_to_refresh/pull_to_refresh.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
+import 'package:sejuta_cita/core/util/capitalize.dart';
+import 'package:sejuta_cita/core/widget/number_pagination.dart';
+import 'package:sejuta_cita/ui/dashboard/presentation/bloc/dashboard_bloc.dart';
+import 'package:sejuta_cita/ui/search/repo/presentation/bloc/repository_bloc.dart';
+
+class RepositoryPage extends StatefulWidget {
+  const RepositoryPage({Key? key}) : super(key: key);
+
+  @override
+  _RepositoryPageState createState() => _RepositoryPageState();
+}
+
+class _RepositoryPageState extends State<RepositoryPage> {
+  final RefreshController _controller = RefreshController();
+  final ItemScrollController itemScrollController = ItemScrollController();
+
+  final paginationKey = GlobalKey(debugLabel: 'createPagination');
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<RepositoryBloc, RepositoryState>(
+      builder: (context, state) {
+        if (state is OnRepositoryLoading) {
+          return const Center(
+            child: CircularProgressIndicator(),
+          );
+        } else if (state is OnRepositoryLoaded) {
+          return repositoryBody(state);
+        } else if (state is OnRepositoryError) {
+          return Center(
+            child: Text(state.errorMessage),
+          );
+        } else {
+          return const SizedBox();
+        }
+      },
+    );
+  }
+
+  Widget repositoryBody(OnRepositoryLoaded data) {
+    if (data.loadType == LoadType.lazyLoading) {
+      int index = (data.page * data.resultCount) - 1;
+      debugPrint('_loadTypeChooser ========== $index');
+      itemScrollController.scrollTo(
+        index: index,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOutCubic,
+      );
+    }
+    int pageLength = (data.repository.totalCount / data.resultCount).ceil();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _loadTypeChooser(data),
+        Flexible(
+          child: SmartRefresher(
+            controller: _controller,
+            enablePullDown: false,
+            enablePullUp: true,
+            footer: CustomFooter(
+              builder: (BuildContext context, LoadStatus? mode) {
+                Widget body;
+                if (mode == LoadStatus.idle) {
+                  body = const Text("pull up load");
+                } else if (mode == LoadStatus.loading) {
+                  body = const CupertinoActivityIndicator();
+                } else if (mode == LoadStatus.failed) {
+                  body = const Text("Load Failed!Click retry!");
+                } else if (mode == LoadStatus.canLoading) {
+                  body = const Text("release to load more");
+                } else {
+                  body = const Text("No more Data");
+                }
+                if (data.loadType == LoadType.lazyLoading) {
+                  return SizedBox(
+                    height: 55.0,
+                    child: Center(child: body),
+                  );
+                } else {
+                  return const SizedBox();
+                }
+              },
+            ),
+            onLoading: () {
+              if (data.loadType == LoadType.lazyLoading) {
+                debugPrint('Page Before add =========== ${data.page}');
+                var newPage = data.page + 1;
+                debugPrint('Page after add =========== $newPage');
+                BlocProvider.of<RepositoryBloc>(context)
+                    .add(NextRepositoryEvent(
+                  controller: _controller,
+                  repository: data.repository,
+                  loadType: data.loadType,
+                  searchKey: data.searchKey,
+                  page: newPage,
+                  resultCount: data.resultCount,
+                ));
+              } else {
+                _controller.loadComplete();
+                setState(() {});
+              }
+            },
+            child: ScrollablePositionedList.builder(
+                itemScrollController: itemScrollController,
+                scrollDirection: Axis.vertical,
+                shrinkWrap: true,
+                padding: EdgeInsets.only(
+                  bottom: AppBar().preferredSize.height * 0.1,
+                ),
+                itemCount: data.repository.items.length,
+                itemBuilder: (BuildContext buildContext, int index) {
+                  var repositoryData = data.repository.items[index];
+                  DateTime createdAt =
+                      DateTime.parse(repositoryData.createdAt ?? '');
+                  return ListTile(
+                    onTap: () async {
+                      debugPrint('Index ========== $index');
+                    },
+                    title: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(repositoryData.name ?? ''),
+                        Text(
+                          '${createdAt.day}/${createdAt.month}/${createdAt.year}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    trailing: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Watchers : ${repositoryData.watchersCount}',
+                        ),
+                        Text(
+                          'Stars : ${repositoryData.stargazersCount}',
+                        ),
+                        Text(
+                          'Forks : ${repositoryData.forksCount}',
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+          ),
+        ),
+        Offstage(
+          offstage: data.loadType == LoadType.lazyLoading,
+          child: _createPagination(data, pageLength),
+        ),
+      ],
+    );
+  }
+
+  NumberPagination _createPagination(OnRepositoryLoaded data, int pageLength) {
+    paginationKey.currentState?.didChangeDependencies();
+    return NumberPagination(
+      key: paginationKey,
+      listener: (newPage) {
+        BlocProvider.of<RepositoryBloc>(context).add(NextRepositoryEvent(
+          repository: data.repository,
+          loadType: data.loadType,
+          searchKey: data.searchKey,
+          page: newPage,
+          resultCount: data.resultCount,
+        ));
+      },
+      totalPage: pageLength >= 99 ? 99 : pageLength,
+      currentPage: data.page,
+      threshold: 5,
+    );
+  }
+
+  Widget _loadTypeChooser(OnRepositoryLoaded data) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        _chooserLoadType(data, LoadType.lazyLoading),
+        _chooserLoadType(data, LoadType.withIndex),
+      ],
+    );
+  }
+
+  InkWell _chooserLoadType(OnRepositoryLoaded data, LoadType loadType) {
+    return InkWell(
+      splashColor: Colors.transparent,
+      highlightColor: Colors.transparent,
+      onTap: () {
+        BlocProvider.of<RepositoryBloc>(context)
+            .add(ChangeLoadTypeRepositoryEvent(
+          repository: data.repository,
+          loadType: loadType,
+          searchKey: data.searchKey,
+          page: data.page,
+          resultCount: data.resultCount,
+        ));
+      },
+      child: Container(
+        height: 40,
+        width: MediaQuery.of(context).size.width * 0.35,
+        alignment: Alignment.center,
+        margin: const EdgeInsets.all(4),
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: data.loadType == loadType
+              ? Theme.of(context).colorScheme.surface
+              : Theme.of(context).colorScheme.onSurface.withOpacity(0.01),
+          borderRadius: const BorderRadius.all(Radius.circular(4)),
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.grey,
+              offset: Offset(0.0, 1.0), //(x,y)
+              blurRadius: 1.0,
+            ),
+          ],
+        ),
+        child: Text(
+          Capitalize()(loadType.toString().replaceAll('LoadType.', '')),
+          style: TextStyle(
+            color: data.loadType == loadType
+                ? Theme.of(context).colorScheme.onSurface
+                : Theme.of(context).colorScheme.surface,
+          ),
+        ),
+      ),
+    );
+  }
+}
