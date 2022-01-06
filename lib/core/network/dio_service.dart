@@ -70,9 +70,9 @@ class DioService {
 
     var options = BaseOptions(
         baseUrl: baseUrl,
-        connectTimeout: const Duration(seconds: 30).inMilliseconds,
-        receiveTimeout: const Duration(seconds: 30).inMilliseconds,
-        sendTimeout: const Duration(seconds: 30).inMilliseconds,
+        connectTimeout: const Duration(seconds: 90).inMilliseconds,
+        receiveTimeout: const Duration(seconds: 90).inMilliseconds,
+        sendTimeout: const Duration(seconds: 90).inMilliseconds,
         headers: {}
     );
     return options;

@@ -140,9 +140,9 @@ class _DashboardState extends State<Dashboard> {
         // },
         onSubmitted: (value) {
           if (value.length > 3) {
-            debugPrint('Length Value TextField ====== ${value.length}');
-            debugPrint('Value TextField ====== $value');
             if (state is DashboardInitial) {
+              debugPrint('Length Value TextField ====== ${value.length}');
+              debugPrint('Value TextField ====== $value');
               BlocProvider.of<DashboardBloc>(context).add(InitSearch(
                 selectedSearchType: state.selectedSearchType,
                 searchKey: value,
@@ -150,6 +150,8 @@ class _DashboardState extends State<Dashboard> {
                 resultCount: 10,
               ));
             } else {
+              debugPrint('Length Value TextField Else ====== ${value.length}');
+              debugPrint('Value TextField Else ====== $value');
               BlocProvider.of<DashboardBloc>(context).add(SearchData(
                 selectedSearchType: state.selectedSearchType,
                 searchKey: value,
